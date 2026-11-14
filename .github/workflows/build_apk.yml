@@ -15,8 +15,11 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Fix Git Safe Directory
-        run: git config --global --add safe.directory /__w/hokisama-trade-analys/hokisama-trade-analys
+      - name: Prepare Environment & Lock Cython
+        run: |
+          mkdir -p /github/home/.cache/pip
+          git config --global --add safe.directory /__w/hokisama-trade-analys/hokisama-trade-analys
+          pip install --upgrade "pip<24.1" "setuptools==69.5.1" "wheel==0.43.0" "cython==0.29.36"
 
       - name: Build Android APK
         run: yes | buildozer android debug
