@@ -26,7 +26,7 @@ jobs:
       - name: Accept Android SDK Licenses
         run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      - name: Generate Android WebView App
+      - name: Generate Auto-Start Android WebView App
         run: |
           mkdir -p app/src/main/java/com/echogaulcorp/hokisamatrade
           mkdir -p app/src/main/res/xml
@@ -68,8 +68,8 @@ jobs:
                   applicationId "com.echogaulcorp.hokisamatrade"
                   minSdk 24
                   targetSdk 34
-                  versionCode 1
-                  versionName "1.0"
+                  versionCode 2
+                  versionName "2.0"
               }
           }
           EOF
@@ -89,6 +89,10 @@ jobs:
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET" />
               <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+              <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+              <queries>
+                  <package android:name="com.termux" />
+              </queries>
               <application
                   android:label="Hokisama Trade Analys"
                   android:networkSecurityConfig="@xml/network_security_config"
@@ -110,22 +114,67 @@ jobs:
           package com.echogaulcorp.hokisamatrade;
 
           import android.app.Activity;
+          import android.content.Intent;
           import android.os.Bundle;
+          import android.os.Handler;
+          import android.os.Looper;
           import android.webkit.WebSettings;
           import android.webkit.WebView;
           import android.webkit.WebViewClient;
+          import java.net.HttpURLConnection;
+          import java.net.URL;
 
           public class MainActivity extends Activity {
+              private WebView webView;
+              private final Handler handler = new Handler(Looper.getMainLooper());
+
               @Override
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
-                  WebView webView = new WebView(this);
+                  webView = new WebView(this);
                   WebSettings settings = webView.getSettings();
                   settings.setJavaScriptEnabled(true);
                   settings.setDomStorageEnabled(true);
                   webView.setWebViewClient(new WebViewClient());
                   setContentView(webView);
-                  webView.loadUrl("http://127.0.0.1:8080");
+
+                  String loadingHtml = "<html><body style='background:#060b14;color:#00e5ff;font-family:monospace;display:flex;flex-direction:column;justify-content:center;align-items:center;height:100vh;text-align:center;'>"
+                          + "<h2>⚡ HOKISAMA TRADE ANALYS</h2>"
+                          + "<p style='color:#00e676;'>Menyalakan Engine AI & TradingView...</p>"
+                          + "</body></html>";
+                  webView.loadDataWithBaseURL(null, loadingHtml, "text/html", "UTF-8", null);
+
+                  triggerTermuxBackend();
+                  waitForServerAndLoad();
+              }
+
+              private void triggerTermuxBackend() {
+                  try {
+                      Intent intent = new Intent();
+                      intent.setClassName("com.termux", "com.termux.app.RunCommandService");
+                      intent.setAction("com.termux.RUN_COMMAND");
+                      intent.putExtra("com.termux.RUN_COMMAND_PATH", "/data/data/com.termux/files/home/start_silent.sh");
+                      intent.putExtra("com.termux.RUN_COMMAND_BACKGROUND", true);
+                      startService(intent);
+                  } catch (Exception ignored) {}
+              }
+
+              private void waitForServerAndLoad() {
+                  new Thread(() -> {
+                      for (int i = 0; i < 20; i++) {
+                          try {
+                              HttpURLConnection conn = (HttpURLConnection) new URL("http://127.0.0.1:8080/status").openConnection();
+                              conn.setConnectTimeout(500);
+                              conn.setReadTimeout(500);
+                              if (conn.getResponseCode() == 200) {
+                                  handler.post(() -> webView.loadUrl("http://127.0.0.1:8080"));
+                                  return;
+                              }
+                          } catch (Exception ignored) {}
+                          try { Thread.sleep(600); } catch (InterruptedException ignored) {}
+                      }
+                      handler.post(() -> webView.loadUrl("http://127.0.0.1:8080"));
+                  }).start();
               }
           }
           EOF
@@ -136,5 +185,5 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: HokisamaTradeAnalys-APK
+          name: HokisamaTradeAnalys-APK-v2
           path: app/build/outputs/apk/debug/*.apk
